@@ -1,4 +1,6 @@
+import sys
 import signal
+from asyncstdlib.contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Set
@@ -16,6 +18,8 @@ if TYPE_CHECKING:
     from runnel.app import App
 
 logger = structlog.get_logger(__name__)
+
+signals_supported = False if sys.platform == "win32" else True
 
 
 @dataclass
@@ -99,7 +103,10 @@ class Worker:
 
         self.app.workers.add(self)
         try:
-            async with anyio.open_signal_receiver(signal.SIGINT, signal.SIGTERM) as signals:
+            async with (
+                anyio.open_signal_receiver(signal.SIGINT, signal.SIGTERM)
+                if signals_supported else nullcontext()
+            ) as signals:
                 async with anyio.create_task_group() as tg:
                     # The main executor tasks.
                     for e in self.executors:
@@ -113,11 +120,12 @@ class Worker:
                     await tg.spawn(self.elect_leader)
                     self.started = True
 
-                    # Allow for graceful shutdown.
-                    async for signum in signals:
-                        logger.critical("signal-received", signum=signum)
-                        await tg.cancel_scope.cancel()
-                        return
+                    if signals_supported:
+                        # Allow for graceful shutdown.
+                        async for signum in signals:
+                            logger.critical("signal-received", signum=signum)
+                            await tg.cancel_scope.cancel()
+                            return
         finally:
             self.app.workers.remove(self)
             if not self.app.workers:
