@@ -51,7 +51,7 @@ class Worker:
         processors : Union[str, List[str]]
             If "all", then run all processors known to the app. Otherwise only run those
             named in the processors list.
-
+        
         Notes
         -----
         For every processor, the first worker to start will create a consumer group for
